@@ -8,10 +8,15 @@ let pendingOtp = null;
 // ─── Nodemailer transporter ───────────────────────────────────────────────────
 function createTransporter() {
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,           // SSL on port 465 — more reliable on cloud hosts than STARTTLS/587
     auth: {
       user: process.env.EMAIL_USER,   // your Gmail address
-      pass: process.env.EMAIL_PASS,   // Gmail App Password (not your regular password)
+      pass: process.env.EMAIL_PASS,   // Gmail App Password
+    },
+    tls: {
+      rejectUnauthorized: false,      // prevents TLS cert errors on Render's infrastructure
     },
   });
 }
@@ -22,13 +27,21 @@ function createTransporter() {
 const requestOtp = async (req, res) => {
   try {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error('❌ EMAIL_USER or EMAIL_PASS env var is missing');
       return res.status(500).json({
         message: 'Email configuration missing. Set EMAIL_USER and EMAIL_PASS in .env',
       });
     }
 
     // Dynamically fetch owner email from the User profile in DB
-    const user = await User.findOne();
+    let user;
+    try {
+      user = await User.findOne();
+    } catch (dbError) {
+      console.error('❌ MongoDB query failed:', dbError.message);
+      return res.status(500).json({ message: 'Database error. Check MongoDB connection and Atlas IP whitelist.', error: dbError.message });
+    }
+
     if (!user || !user.email) {
       return res.status(404).json({
         message: 'Owner profile not found. Please create your profile first.',
@@ -60,11 +73,11 @@ const requestOtp = async (req, res) => {
       `,
     });
 
-    console.log(`OTP sent to ${ownerEmail}`);
+    console.log(`✅ OTP sent to ${ownerEmail}`);
 
     res.status(200).json({ message: 'OTP sent to owner email.' });
   } catch (error) {
-    console.error('Failed to send OTP:', error);
+    console.error('❌ Failed to send OTP:', error.code, error.message);
     res.status(500).json({ message: 'Failed to send OTP. Check email credentials.', error: error.message });
   }
 };
