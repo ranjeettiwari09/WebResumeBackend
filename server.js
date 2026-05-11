@@ -21,7 +21,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Token'],
 }));
-app.options('*', cors()); // Handle preflight for all routes
+app.options(/.*/, cors()); // Handle preflight for all routes (Express 5 compatible)
 app.use(express.json());
 
 // Routes (required AFTER dotenv + cloudinary config so upload.js gets live credentials)
