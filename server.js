@@ -16,7 +16,12 @@ configureCloudinary();
 connectDB();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Token'],
+}));
+app.options('*', cors()); // Handle preflight for all routes
 app.use(express.json());
 
 // Routes (required AFTER dotenv + cloudinary config so upload.js gets live credentials)
@@ -35,6 +40,9 @@ app.use('/api/education',  educationRoutes);
 app.use('/api/experience', experienceRoutes);
 app.use('/api/messages',   messageRoutes);
 app.use('/api/auth',       otpRoutes);
+
+// ─── Health check (used by frontend to detect cold-start wake-up) ─────────────
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 // ─── Global error handler (catches Multer / Cloudinary / route errors) ────────
 function errorMessage(err) {

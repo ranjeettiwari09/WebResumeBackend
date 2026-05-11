@@ -1,35 +1,19 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const { createSession } = require('../middlewares/otpSession');
 const User = require('../models/User');
 
 // In-memory OTP store: { otp, expiresAt }
 let pendingOtp = null;
 
-// ─── Nodemailer transporter ───────────────────────────────────────────────────
-function createTransporter() {
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,           // SSL on port 465 — more reliable on cloud hosts than STARTTLS/587
-    auth: {
-      user: process.env.EMAIL_USER,   // your Gmail address
-      pass: process.env.EMAIL_PASS,   // Gmail App Password
-    },
-    tls: {
-      rejectUnauthorized: false,      // prevents TLS cert errors on Render's infrastructure
-    },
-  });
-}
-
 // ─── REQUEST OTP ──────────────────────────────────────────────────────────────
 // POST /api/auth/request-otp
 // No body required — just triggers OTP send to owner's email
 const requestOtp = async (req, res) => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.error('❌ EMAIL_USER or EMAIL_PASS env var is missing');
+    if (!process.env.RESEND_API_KEY) {
+      console.error('❌ RESEND_API_KEY env var is missing');
       return res.status(500).json({
-        message: 'Email configuration missing. Set EMAIL_USER and EMAIL_PASS in .env',
+        message: 'Email configuration missing. Set RESEND_API_KEY in environment variables.',
       });
     }
 
@@ -55,11 +39,12 @@ const requestOtp = async (req, res) => {
 
     pendingOtp = { otp, expiresAt };
 
-    const transporter = createTransporter();
+    // ─── Send via Resend (HTTP API — works on Render free tier) ──────────────
+    const resend = new Resend(process.env.RESEND_API_KEY);
 
-    await transporter.sendMail({
-      from: `"Portfolio System" <${process.env.EMAIL_USER}>`,
-      to: ownerEmail,
+    const { error: sendError } = await resend.emails.send({
+      from: 'Portfolio System <onboarding@resend.dev>',  // use your verified domain once set up
+      to: [ownerEmail],
       subject: '🔐 Your Owner OTP — Portfolio Access',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; border-radius: 12px; background: #f9f9f9; border: 1px solid #e0e0e0;">
@@ -73,12 +58,17 @@ const requestOtp = async (req, res) => {
       `,
     });
 
-    console.log(`✅ OTP sent to ${ownerEmail}`);
+    if (sendError) {
+      console.error('❌ Resend API error:', sendError);
+      return res.status(500).json({ message: 'Failed to send OTP email.', error: sendError.message });
+    }
 
+    console.log(`✅ OTP sent to ${ownerEmail}`);
     res.status(200).json({ message: 'OTP sent to owner email.' });
+
   } catch (error) {
     console.error('❌ Failed to send OTP:', error.code, error.message);
-    res.status(500).json({ message: 'Failed to send OTP. Check email credentials.', error: error.message });
+    res.status(500).json({ message: 'Failed to send OTP.', error: error.message });
   }
 };
 
